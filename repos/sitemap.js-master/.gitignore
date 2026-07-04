@@ -1,0 +1,24 @@
+.DS_Store
+*.swp
+env/
+node_modules/
+dist
+
+# editors
+.idea/
+.vscode/
+*.code-workspace
+*~
+
+# code coverage
+coverage/
+.nyc_output/
+
+/yarn.lock
+/.eslintrc.json.tpl
+/.browserslistrc
+/.nvmrc
+/tests/~tempFile.tmp
+urls.txt
+stream-write.js
+toflat.js

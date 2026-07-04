@@ -1,0 +1,250 @@
+import { describe, expect, it } from 'vitest';
+
+import { getBody, getHeaders, preparePaths, response } from './sitemap.js';
+import type { NormalizedRoute, ParamValues, PathObj } from './types.js';
+
+const source = (compatibilityKey: string) => ({
+  adapter: 'unit',
+  compatibilityKey,
+});
+
+const staticNormalizedRoute = (path: string): NormalizedRoute => ({
+  id: path,
+  segments: path === '/' ? [] : [{ kind: 'static', value: path.slice(1) }],
+  source: source(path),
+});
+
+const blogSlugNormalizedRoute: NormalizedRoute = {
+  id: '/blog/[slug]',
+  params: [{ name: 'slug', segmentIndex: 1 }],
+  segments: [
+    { kind: 'static', value: 'blog' },
+    { kind: 'param', name: 'slug' },
+  ],
+  source: source('/blog/[slug]'),
+};
+
+describe('core sitemap preparePaths', () => {
+  it('combines normalizedRoute paths, additional paths, processPaths, dedupe, and sort', () => {
+    const paths = preparePaths({
+      additionalPaths: ['manual.pdf', '/about'],
+      defaultChangefreq: 'daily',
+      normalizedRoutes: [staticNormalizedRoute('/about'), staticNormalizedRoute('/')],
+      processPaths: (pathObjs) => [...pathObjs, { changefreq: 'weekly', path: '/about' }],
+      sort: 'alpha',
+    });
+
+    expect(paths).toEqual([
+      { changefreq: 'daily', path: '/' },
+      { changefreq: 'weekly', path: '/about' },
+      { changefreq: 'daily', path: '/manual.pdf' },
+    ]);
+  });
+
+  it('throws a migration error for the v1 lang config property', () => {
+    expect(() =>
+      preparePaths({
+        // @ts-expect-error - runtime validation covers JavaScript callers.
+        lang: { alternates: ['de'], default: 'en' },
+        normalizedRoutes: [staticNormalizedRoute('/about')],
+      })
+    ).toThrow('super-sitemap: `lang` was renamed to `locales` in v2.');
+  });
+
+  it('requires sort to be a supported mode', () => {
+    expect(() =>
+      preparePaths({
+        normalizedRoutes: [staticNormalizedRoute('/about')],
+        sort: 'alphabetical' as unknown as false,
+      })
+    ).toThrow('super-sitemap: `sort` must be "alpha" or false.');
+  });
+
+  it('requires processPaths to be a function that returns valid path objects', () => {
+    expect(() =>
+      preparePaths({
+        normalizedRoutes: [staticNormalizedRoute('/about')],
+        processPaths: true as unknown as (paths: PathObj[]) => PathObj[],
+      })
+    ).toThrow('super-sitemap: `processPaths` must be a function.');
+
+    const invalidReturnValues = [
+      undefined,
+      Promise.resolve([]),
+      [{ path: 'about' }],
+      [{}],
+      [null],
+    ] as unknown as PathObj[][];
+
+    for (const invalidReturnValue of invalidReturnValues) {
+      expect(() =>
+        preparePaths({
+          normalizedRoutes: [staticNormalizedRoute('/about')],
+          processPaths: () => invalidReturnValue,
+        })
+      ).toThrow(/super-sitemap: `processPaths` must return|super-sitemap: `processPaths` returned/);
+    }
+  });
+
+  it('formats route param errors with the adapter name and remediation guidance', () => {
+    expect(() => preparePaths({ normalizedRoutes: [blogSlugNormalizedRoute] })).toThrow(
+      "super-sitemap: paramValues not provided for route: '/blog/[slug]'. Update excludeRoutePatterns to exclude this route or add data for this route's params to paramValues."
+    );
+
+    expect(() =>
+      preparePaths({
+        normalizedRoutes: [blogSlugNormalizedRoute],
+        paramValues: { '/missing/[slug]': ['x'] },
+      })
+    ).toThrow(
+      "super-sitemap: paramValues were provided for a route that does not exist: '/missing/[slug]'. Remove this property from paramValues or update your route source."
+    );
+  });
+
+  it('formats param value count mismatch errors with plain-language guidance', () => {
+    expect(() =>
+      preparePaths({
+        normalizedRoutes: [blogSlugNormalizedRoute],
+        paramValues: { '/blog/[slug]': [['hello-world', 'extra']] },
+      })
+    ).toThrow(
+      "super-sitemap: paramValues for route '/blog/[slug]' must provide 1 value per path: slug. Received 2 values."
+    );
+  });
+
+  it('formats unsupported param value shape errors with supported TypeScript forms', () => {
+    expect(() =>
+      preparePaths({
+        normalizedRoutes: [blogSlugNormalizedRoute],
+        paramValues: { '/blog/[slug]': [{ values: 'hello-world' }] } as unknown as ParamValues,
+      })
+    ).toThrow(
+      "super-sitemap: paramValues for route '/blog/[slug]' must be string[], string[][], or ParamValue[]."
+    );
+  });
+});
+
+describe('core sitemap getHeaders', () => {
+  it('returns default headers and merges custom headers case-insensitively', () => {
+    expect(getHeaders()).toEqual({
+      'cache-control': 'max-age=0, s-maxage=3600',
+      'content-type': 'application/xml',
+    });
+    expect(
+      getHeaders({ customHeaders: { 'Cache-Control': 'max-age=0, s-maxage=60', 'X-Custom': 'y' } })
+    ).toEqual({
+      'cache-control': 'max-age=0, s-maxage=60',
+      'content-type': 'application/xml',
+      'x-custom': 'y',
+    });
+  });
+});
+
+describe('core sitemap getBody and response', () => {
+  const normalizedRoutes = [
+    staticNormalizedRoute('/'),
+    staticNormalizedRoute('/about'),
+    staticNormalizedRoute('/pricing'),
+  ];
+
+  it('requires origin to be an absolute URL origin', () => {
+    const invalidOrigins = [
+      undefined,
+      '',
+      'example.com',
+      '/',
+      'mailto:hello@example.com',
+      'https://example.com/',
+      'https://example.com/path',
+      'https://example.com?x=1',
+      'https://example.com#hash',
+    ];
+    const originError =
+      'super-sitemap: `origin` must be an absolute URL origin, e.g. "https://example.com".';
+
+    for (const origin of invalidOrigins) {
+      expect(() =>
+        // @ts-expect-error - runtime validation covers JavaScript callers.
+        getBody({ normalizedRoutes, origin })
+      ).toThrow(originError);
+      expect(() =>
+        // @ts-expect-error - runtime validation covers JavaScript callers.
+        response({ normalizedRoutes, origin })
+      ).toThrow(originError);
+    }
+  });
+
+  it('requires maxPerPage to be a supported sitemap page size', () => {
+    const invalidMaxPerPageValues = [0, -1, 50_001, 1.5, Number.NaN, '2'];
+
+    for (const maxPerPage of invalidMaxPerPageValues) {
+      expect(() =>
+        getBody({
+          // @ts-expect-error - runtime validation covers JavaScript callers.
+          maxPerPage,
+          normalizedRoutes,
+          origin: 'https://example.com',
+        })
+      ).toThrow('maxPerPage must be an integer between 1 and 50_000.');
+
+      expect(() =>
+        response({
+          // @ts-expect-error - runtime validation covers JavaScript callers.
+          maxPerPage,
+          normalizedRoutes,
+          origin: 'https://example.com',
+        })
+      ).toThrow('maxPerPage must be an integer between 1 and 50_000.');
+    }
+  });
+
+  it('renders a sitemap index when paths exceed one page and pages on request', async () => {
+    const indexBody = getBody({
+      maxPerPage: 2,
+      normalizedRoutes,
+      origin: 'https://example.com',
+    });
+    expect(indexBody).toContain('<sitemapindex');
+    expect(indexBody).toContain('<loc>https://example.com/sitemap2.xml</loc>');
+
+    const pageRes = response({
+      maxPerPage: 2,
+      normalizedRoutes,
+      origin: 'https://example.com',
+      page: '2',
+    });
+    expect(await pageRes.text()).toContain('<loc>https://example.com/pricing</loc>');
+  });
+
+  it('reports pagination errors as plain strings from getBody and statuses from response', async () => {
+    const invalidArgs = {
+      maxPerPage: 2,
+      normalizedRoutes,
+      origin: 'https://example.com',
+    };
+
+    expect(getBody({ ...invalidArgs, page: 'invalid' })).toBe('Invalid page param');
+    expect(getBody({ ...invalidArgs, page: '99' })).toBe('Page does not exist');
+
+    const invalidRes = response({ ...invalidArgs, page: 'invalid' });
+    expect(invalidRes.status).toBe(400);
+    expect(await invalidRes.text()).toBe('Invalid page param');
+
+    const notFoundRes = response({ ...invalidArgs, page: '99' });
+    expect(notFoundRes.status).toBe(404);
+    expect(await notFoundRes.text()).toBe('Page does not exist');
+  });
+
+  it('returns a 200 XML response with merged headers', async () => {
+    const res = response({
+      headers: { 'Cache-Control': 'max-age=0, s-maxage=60' },
+      normalizedRoutes,
+      origin: 'https://example.com',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('max-age=0, s-maxage=60');
+    expect(res.headers.get('content-type')).toBe('application/xml');
+    expect(await res.text()).toContain('<loc>https://example.com/about</loc>');
+  });
+});

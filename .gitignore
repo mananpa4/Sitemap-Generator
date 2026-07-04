@@ -1,0 +1,9 @@
+node_modules/
+*.log
+dist/
+tmp/
+sitemap*.xml
+sitemap*.xml.gz
+sitemap*.txt
+sitemap*-report.json
+!examples/**/sitemap*.xml

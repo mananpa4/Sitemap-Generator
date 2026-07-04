@@ -1,0 +1,116 @@
+export type Changefreq = 'always' | 'daily' | 'hourly' | 'monthly' | 'never' | 'weekly' | 'yearly';
+
+export type ParamValue = {
+  values: string[];
+  lastmod?: string;
+  priority?: Priority;
+  changefreq?: Changefreq;
+};
+
+export type ParamValues = Record<string, ParamValue[] | never | string[] | string[][]>;
+
+export type Priority = 0.0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0;
+
+export type LocalesConfig = {
+  default: string;
+  alternates: string[];
+};
+
+export type Alternate = {
+  hreflang: string;
+  path: string;
+};
+
+export type PathObj = {
+  path: string;
+  lastmod?: string; // ISO 8601 datetime
+  changefreq?: Changefreq;
+  priority?: Priority;
+  alternates?: Alternate[];
+};
+
+export type RouteSegment =
+  | {
+      kind: 'locale';
+      name: string;
+      matcher?: string;
+    }
+  | {
+      kind: 'param';
+      name: string;
+      matcher?: string;
+      rest?: boolean;
+    }
+  | {
+      kind: 'static';
+      value: string;
+    };
+
+export type RouteParam = {
+  name: string;
+  matcher?: string;
+  rest?: boolean;
+  segmentIndex: number;
+};
+
+export type RouteLocaleSlot = {
+  paramName: string;
+  mode: 'optional' | 'required';
+  matcher?: string;
+  segmentIndex: number;
+};
+
+export type RouteSource = {
+  adapter: string;
+  compatibilityKey: string;
+  filePath?: string;
+};
+
+export type NormalizedRoute = {
+  id: string;
+  segments: RouteSegment[];
+  params?: RouteParam[];
+  locale?: RouteLocaleSlot;
+  source: RouteSource;
+};
+
+export type SitemapConfig = {
+  additionalPaths?: string[];
+  excludeRoutePatterns?: RegExp[];
+  headers?: Record<string, string>;
+  locales?: LocalesConfig;
+  maxPerPage?: number;
+  origin: string;
+  page?: string;
+
+  /**
+   * Parameter values for dynamic routes, where the values can be:
+   * - `string[]`
+   * - `string[][]`
+   * - `ParamValue[]`
+   */
+  paramValues?: ParamValues;
+
+  /**
+   * Optional. Default changefreq, when not specified within a route's `paramValues` objects.
+   * Omitting from sitemap config will omit changefreq from all sitemap entries except
+   * those where you set `changefreq` property with a route's `paramValues` objects.
+   */
+  defaultChangefreq?: Changefreq;
+
+  /**
+   * Optional. Default priority, when not specified within a route's `paramValues` objects.
+   * Omitting from sitemap config will omit priority from all sitemap entries except
+   * those where you set `priority` property with a route's `paramValues` objects.
+   */
+  defaultPriority?: Priority;
+
+  processPaths?: (paths: PathObj[]) => PathObj[];
+
+  /**
+   * Optional. Defaults to `false`, preserving generated route order, dynamic
+   * `paramValues` order, and `additionalPaths` order. Set to `alpha` to sort all
+   * paths alphabetically.
+   */
+  sort?: 'alpha' | false;
+};

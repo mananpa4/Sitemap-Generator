@@ -1,0 +1,3 @@
+# Una URL por linea. Las lineas que empiezan con # se ignoran.
+https://example.com/pagina-especial
+https://example.com/promocion-temporal

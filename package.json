@@ -1,0 +1,26 @@
+{
+  "name": "sitemap-generator",
+  "version": "1.0.0",
+  "description": "Generador y auto-generador de sitemap.xml (crawler + fuentes estaticas) para ejecutar manualmente o via cron/Task Scheduler/CI.",
+  "private": true,
+  "license": "MIT",
+  "main": "src/index.js",
+  "bin": {
+    "sitemap-generator": "bin/sitemap-generator.js"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "start": "node bin/sitemap-generator.js",
+    "test": "node --test test/",
+    "example": "node bin/sitemap-generator.js --config examples/sitemap.config.example.js --verbose"
+  },
+  "keywords": [
+    "sitemap",
+    "sitemap.xml",
+    "crawler",
+    "seo",
+    "cron"
+  ]
+}

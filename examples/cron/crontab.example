@@ -1,0 +1,13 @@
+# Ejemplo de crontab (Linux/macOS) para regenerar el sitemap periodicamente.
+# Instalar con: crontab -e   (y pegar la linea que corresponda)
+#
+# Formato: minuto hora dia-mes mes dia-semana comando
+
+# Cada dia a las 03:00
+0 3 * * * cd /ruta/a/Sitemap-Generator && /usr/bin/node bin/sitemap-generator.js --config sitemap.config.js >> logs/sitemap.log 2>&1
+
+# Cada semana (lunes 04:00)
+0 4 * * 1 cd /ruta/a/Sitemap-Generator && /usr/bin/node bin/sitemap-generator.js --config sitemap.config.js >> logs/sitemap.log 2>&1
+
+# Cada mes (dia 1 a las 05:00)
+0 5 1 * * cd /ruta/a/Sitemap-Generator && /usr/bin/node bin/sitemap-generator.js --config sitemap.config.js >> logs/sitemap.log 2>&1

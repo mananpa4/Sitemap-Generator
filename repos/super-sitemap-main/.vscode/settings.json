@@ -1,0 +1,28 @@
+{
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit"
+  },
+  "search.exclude": {
+    "**/.git": true,
+    "**/node_modules": true,
+    "**/.svelte-kit": true
+  },
+  "cSpell.words": [
+    "changefreq",
+    "datetime",
+    "devs",
+    "lastmod",
+    "loc",
+    "prerender",
+    "prerendering",
+    "publint",
+    "signup",
+    "sitemapindex",
+    "subpage",
+    "subpages"
+  ],
+  "cSpell.ignoreWords": []
+}

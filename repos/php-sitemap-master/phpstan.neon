@@ -1,0 +1,12 @@
+parameters:
+    level: 6
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - src/views/
+        - src/Adapters/
+        - tests/Stubs/
+        - tests/Unit/LaravelSitemapAdapterTest.php
+        - tests/Unit/SymfonySitemapAdapterTest.php
+    treatPhpDocTypesAsCertain: false
