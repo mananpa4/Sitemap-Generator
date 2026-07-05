@@ -21,18 +21,22 @@ dependencias de produccion**, que:
    (directorio estatico, lista manual).
 2. Construye uno o varios archivos `sitemap.xml` (con `sitemap-index.xml`
    automatico si se superan los limites del protocolo: 50.000 URLs / 50MB).
-3. Opcionalmente actualiza `robots.txt`, notifica a buscadores (ping/IndexNow)
-   y escribe un reporte de diagnostico (`*-report.json`).
+3. Opcionalmente actualiza `robots.txt`, notifica a buscadores (ping/IndexNow),
+   escribe un reporte de diagnostico (`*-report.json`) y, si se activa,
+   corre un analisis SEO on-page nativo por URL (`*-seo-report.json`).
 
 Esta pensado para ejecutarse **una vez por invocacion** y salir — la
 programacion periodica se delega al sistema operativo (cron, Task
 Scheduler) o a CI (GitHub Actions), no hay un scheduler interno. Ver
 `examples/cron/` para los tres casos documentados.
 
-El directorio `repos/` contiene 10 proyectos de referencia (PHP, Node, Go,
-Ruby, frameworks, una GUI Electron) que se revisaron para diseñar esta
-herramienta. **No forman parte del build, no se ejecutan, no se modifican.**
-Son solo material de consulta.
+El directorio `repos/` contiene proyectos de referencia (crawlers/generadores
+de sitemap en PHP, Node, Go, Ruby, frameworks, una GUI Electron, y en
+`repos/repos-SEO/` dos proyectos de analisis de contenido SEO) que se
+revisaron para diseñar esta herramienta. **No forman parte del build, no se
+ejecutan.** Por defecto no se modifican — son material de consulta —, salvo
+que el usuario pida explicitamente actualizar/mejorar uno de ellos (ya
+ocurrio una vez con `Laravel-YoastSeo-master`, ver CLAUDE_CONTEXT.md).
 
 ## Tecnologias
 
@@ -57,28 +61,32 @@ src/
   crawler.js                crawlSite(): BFS con pool de concurrencia; devuelve {entries, stats}
   http.js                   fetchUrl(): wrapper de fetch con timeout/retries/AbortController
   robots.js                 RobotsTxt: parser/evaluador (Allow/Disallow/Crawl-delay, wildcards)
-  htmlParser.js              parseHtml(): extraccion de <a>/<meta>/<link canonical>/<base>/<title>
+  htmlParser.js              parseHtml(): extraccion de <a>/<meta>/<link canonical>/<base>/<title>/headings/images; stripHtmlToText()
   sources.js                fromStaticDir(), fromUrlsFile(): fuentes de URLs no-HTTP
   sitemapBuilder.js          buildUrlsetXml/buildSitemapIndexXml/buildTxtSitemap/splitEntries/gzip
   robotsTxtWriter.js         ensureSitemapReference(): edicion no destructiva de robots.txt
   ping.js                    pingSearchEngines(), submitIndexNow()
+  seoAnalysis.js             analyzePage()/analyzeSite(): checks SEO on-page nativos + deteccion de duplicados
   logger.js                  Logger por niveles (silent/error/warn/info/verbose)
 examples/                  Config de ejemplo, urls.example.txt, ejemplos de cron/Task Scheduler/GH Actions
-test/                       Tests node:test (unitarios + un test de integracion con servidor HTTP real)
-repos/                      Material de referencia (solo lectura, no tocar)
+test/                       Tests node:test (unitarios + tests de integracion con servidor HTTP real)
+repos/                      Material de referencia (solo lectura salvo pedido explicito; ver repos/repos-SEO/)
 ```
 
 Flujo de datos (`generateSitemap` en `src/index.js`):
 
 1. `loadConfig()` fusiona defaults + config file + overrides de CLI.
 2. Se recolectan entries de cada fuente habilitada (`crawl`, `staticDir`,
-   `urlsFile`, `additionalUrls`) y se fusionan por `loc` (dedupe).
+   `urlsFile`, `additionalUrls`) y se fusionan por `loc` (dedupe). Si
+   `seo.enabled`, el crawler tambien recolecta datos crudos por pagina
+   (title, meta description, headings, imagenes, texto visible, conteo de
+   enlaces internos/externos) en paralelo, sin afectar las entries del sitemap.
 3. `applyRulesAndDefaults()` aplica `defaults`, `priorityMap` (por
    profundidad) y `perUrlRules` (por patron regex).
 4. `splitEntries()` divide en chunks respetando 50.000 URLs / 50MB.
 5. Se escriben los archivos (`sitemap.xml` o `sitemap-N.xml` +
    `sitemap.xml` como indice), y opcionalmente `.gz`, `.txt`,
-   `*-report.json`.
+   `*-report.json`, `*-seo-report.json` (via `seoAnalysis.analyzeSite()`).
 6. Opcionalmente: actualizar `robots.txt`, ping a buscadores, IndexNow.
 
 ## Convenciones de codigo
@@ -127,8 +135,10 @@ Scheduler/CI (ver `examples/cron/`).
 - **Actualizar `CLAUDE_CONTEXT.md`** despues de completar trabajo
   significativo o tomar una decision tecnica relevante (no despues de cada
   edicion menor).
-- **No tocar `repos/`.** Es material de referencia congelado, no parte del
-  proyecto activo.
+- **No tocar `repos/` por iniciativa propia.** Es material de referencia, no
+  parte del proyecto activo. Solo modificar un proyecto dentro de `repos/`
+  si el usuario lo pide explicitamente (ya paso una vez con
+  `repos/repos-SEO/Laravel-YoastSeo-master`).
 - **Mantener cero dependencias de produccion** salvo que el usuario pida
   explicitamente lo contrario; si una funcionalidad realmente lo requiere,
   discutirlo antes de añadir un paquete.

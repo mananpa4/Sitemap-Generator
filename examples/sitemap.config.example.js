@@ -35,6 +35,16 @@ module.exports = defineConfig({
   ping: { enabled: false, engines: ['bing'] },
   indexNow: { enabled: false, key: null, host: 'example.com' },
 
+  // Analisis SEO on-page nativo (sin dependencias) sobre cada URL crawleada.
+  // Escribe ./output/sitemap-seo-report.json cuando enabled: true.
+  seo: {
+    enabled: false,
+    focusKeyword: null, // p.ej. 'zapatos para correr'
+    titleLength: { min: 40, max: 60 },
+    descriptionLength: { min: 120, max: 156 },
+    minWordCount: 300,
+  },
+
   verbose: false,
   dryRun: false,
 });

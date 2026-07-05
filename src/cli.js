@@ -29,6 +29,8 @@ Opciones:
   --robots-txt-file <path> Ruta del robots.txt a actualizar
   --ping                   Notificar a los motores de busqueda tras generar
   --no-crawl               Desactivar el crawling (usar solo static-dir/urls-file)
+  --seo                    Analizar SEO on-page de cada URL crawleada (*-seo-report.json)
+  --focus-keyword <texto>  Palabra/frase clave para los checks de SEO (implica --seo)
   --dry-run                Ejecutar sin escribir archivos
   --verbose, -v            Logging detallado
   --version                Mostrar version
@@ -64,6 +66,8 @@ function main(argv) {
         ping: { type: 'boolean' },
         crawl: { type: 'boolean', default: true },
         'no-crawl': { type: 'boolean' },
+        seo: { type: 'boolean' },
+        'focus-keyword': { type: 'string' },
         'dry-run': { type: 'boolean' },
         verbose: { type: 'boolean', short: 'v' },
         version: { type: 'boolean' },
@@ -100,6 +104,10 @@ function main(argv) {
   if (values['dry-run']) overrides.dryRun = true;
   if (values.verbose) overrides.verbose = true;
   if (values.ping) overrides.ping = { enabled: true, engines: ['bing'] };
+  if (values.seo || values['focus-keyword']) {
+    overrides.seo = { enabled: true };
+    if (values['focus-keyword']) overrides.seo.focusKeyword = values['focus-keyword'];
+  }
 
   const crawlOverrides = {};
   if (values['max-depth'] !== undefined) crawlOverrides.maxDepth = toNumberOrInfinity(values['max-depth']);

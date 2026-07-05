@@ -5,15 +5,21 @@ trabajo importante o se tome una decision tecnica relevante.** La
 informacion permanente (arquitectura, comandos, convenciones) vive en
 [CLAUDE.md](CLAUDE.md), no aqui.
 
-Ultima actualizacion: 2026-07-04.
+Ultima actualizacion: 2026-07-05.
 
 ## Estado actual
 
-Primera version funcional y completa del generador. El nucleo (crawler,
-sitemap builder, config, CLI, API programatica) esta implementado, probado
-(23 tests, todos en verde) y verificado manualmente contra un sitio real
-(`https://example.com`, con `--max-depth`/`--max-urls` acotados). No hay
-release publicado ni empaquetado npm — se usa directo desde el repo.
+Version funcional y completa del generador, con analisis SEO on-page nativo
+añadido en esta sesion. El nucleo (crawler, sitemap builder, config, CLI,
+API programatica, SEO) esta implementado, probado (38 tests, todos en verde)
+y verificado manualmente contra un sitio real (`https://example.com`, con
+`--max-depth`/`--max-urls` acotados, incluyendo `--seo`). No hay release
+publicado ni empaquetado npm — se usa directo desde el repo.
+
+Ademas, en `repos/repos-SEO/Laravel-YoastSeo-master` (un proyecto de
+referencia, no parte del build) se actualizo la integracion de `yoastseo`
+de `1.57.0` a `3.6.0` a pedido explicito del usuario — ver la seccion de
+decisiones tecnicas mas abajo para el detalle de la migracion de API.
 
 ## Funcionalidades implementadas
 
@@ -26,7 +32,10 @@ release publicado ni empaquetado npm — se usa directo desde el repo.
   trae `visited`, `excludedByRobots`, `excludedByNoindex` y `brokenLinks`
   (URLs con status no-2xx).
 - **Parser HTML sin dependencias** (`src/htmlParser.js`): tokeniza atributos
-  de `<a>`, `<meta>`, `<link>`, `<base>` sin importar el orden de atributos.
+  de `<a>`, `<meta>`, `<link>`, `<base>`, `<img>` sin importar el orden de
+  atributos; tambien extrae `metaDescription`, `headings` (`h1`-`h6`) e
+  `images` (`{src, alt}`), y expone `stripHtmlToText()` para obtener el
+  texto visible de una pagina (usado por el analisis SEO).
 - **Parser de robots.txt** (`src/robots.js`): agrupacion correcta de
   bloques `User-agent` consecutivos, `Allow`/`Disallow` con wildcards y
   ancla `$`, eleccion de grupo mas especifico vs. `*`.
@@ -51,20 +60,42 @@ release publicado ni empaquetado npm — se usa directo desde el repo.
   Flags: `--config`, `--site`, `--out`, `--static-dir`, `--urls-file`,
   `--max-depth`, `--max-urls`, `--concurrency`, `--gzip`, `--txt-sitemap`,
   `--no-report`, `--update-robots-txt`, `--robots-txt-file`, `--ping`,
-  `--no-crawl`, `--dry-run`, `--verbose`/`-v`, `--version`, `--help`/`-h`.
+  `--no-crawl`, `--seo`, `--focus-keyword`, `--dry-run`, `--verbose`/`-v`,
+  `--version`, `--help`/`-h`.
 - **Reporte de diagnostico** (`*-report.json`, activado por default,
   `config.report`): cuenta de URLs, archivos escritos, y si hubo crawl,
   `visited`/`excludedByRobots`/`excludedByNoindex`/`brokenLinks` con detalle.
+- **Analisis SEO on-page nativo** (`src/seoAnalysis.js`, opt-in via
+  `config.seo.enabled` / `--seo`, escribe `*-seo-report.json`): por cada URL
+  HTML crawleada corre checks de `titleLength`, `descriptionLength`,
+  `singleH1`, `imageAlt` (% de `<img>` con `alt`), `wordCount`, `readability`
+  (Flesch reading ease con un contador de silabas heuristico propio,
+  `countSyllables`/`fleschReadingEase`), `internalLinks`/`externalLinks`, y
+  si se define `focusKeyword`/`--focus-keyword`: `keywordInTitle`,
+  `keywordInDescription`, `keywordDensity`. Cada check tiene rating
+  `good`/`ok`/`bad` + mensaje; `analyzePage()` calcula un `score` 0-100
+  propio de esta herramienta (promedio ponderado de ratings, **no** es la
+  escala/algoritmo de Yoast). `analyzeSite()` ademas agrupa
+  `duplicateTitles`/`duplicateDescriptions` entre paginas. El crawler
+  (`crawler.js`) recolecta los datos crudos por pagina (`seoPages`) solo
+  cuando `collectSeoData` esta activo, sin afectar las entries del sitemap.
+  Decision de diseño: **implementacion nativa, sin depender del paquete
+  `yoastseo`** — ver seccion de decisiones tecnicas.
 - **Ejemplos de programacion periodica**: `examples/cron/crontab.example`
   (Linux/macOS), `examples/cron/windows-task-scheduler.md` (`schtasks` +
   GUI), `examples/cron/github-actions.yml` (workflow con `schedule:` +
   `workflow_dispatch`).
-- **Tests** (`test/*.test.js`, `node:test` nativo): unitarios para robots.js,
-  htmlParser.js, sitemapBuilder.js, helpers de crawler.js; un test de
-  integracion (`integration.test.js`) que levanta un servidor `node:http`
-  real y valida crawl -> sitemap.xml completo (incluye caso noindex, robots
-  disallow, y exclusion de dominio externo); un test de reporte
-  (`report.test.js`) que valida `brokenLinks` y `sitemap.txt`.
+- **Tests** (`test/*.test.js`, `node:test` nativo, 38 tests): unitarios para
+  robots.js, htmlParser.js (incluye headings/images/meta description/
+  stripHtmlToText), sitemapBuilder.js, helpers de crawler.js, seoAnalysis.js
+  (`seoAnalysis.test.js`); un test de integracion (`integration.test.js`)
+  que levanta un servidor `node:http` real y valida crawl -> sitemap.xml
+  completo (incluye caso noindex, robots disallow, y exclusion de dominio
+  externo); un test de reporte (`report.test.js`) que valida `brokenLinks` y
+  `sitemap.txt`; un test de integracion SEO (`seoIntegration.test.js`) que
+  valida el flujo completo crawl -> `*-seo-report.json` (checks buenos vs.
+  malos segun contenido real de la pagina, y que el reporte no se escribe
+  si `seo.enabled` es false).
 
 ## Funcionalidades en progreso
 
@@ -81,11 +112,20 @@ esta cerrado.
   son configurables via config file (`.js`/`.json`), no hay equivalente por
   linea de comandos. Es una limitacion aceptada, no un bug: estas
   estructuras (arrays de objetos/regex) no se prestan bien a flags planos.
-- **Extraccion automatica de imagenes para el sitemap de imagenes**: el
-  crawler no puebla `entry.images` a partir de los `<img>` de la pagina;
-  hoy esa extension solo se puede usar pasando entries manualmente via
-  `additionalUrls`. Si se pide soporte de Google Images sitemap real, hay
-  que extender `htmlParser.js` (extraer `<img>`) y `crawler.js`.
+- **Extraccion automatica de imagenes para el sitemap de imagenes** (distinto
+  del analisis SEO): `htmlParser.js` ya extrae `<img>` (`{src, alt}`), pero
+  solo se usa para el check `imageAlt` de `seoAnalysis.js` — el crawler
+  todavia no puebla `entry.images` en las entries del *sitemap* (la
+  extension `<image:image>` de `sitemapBuilder.js` solo se activa pasando
+  entries manualmente via `additionalUrls`). Si se pide soporte de Google
+  Images sitemap real desde el crawl, conectar `parsedHtml.images` (ya
+  disponible) a `results.set(loc, {..., images})` en `crawler.js`.
+- **Checks SEO adicionales no implementados**: no hay check de densidad de
+  keyword por sinonimos/variantes, ni de "cornerstone content", ni
+  inclusive-language (existe en yoastseo 3.x pero requiere listas de
+  palabras por categoria que no vienen listas para usar en el paquete —
+  ver notas de la migracion de Laravel-YoastSeo-master). Se opto por no
+  implementarlos para mantener el scope acotado; agregar bajo pedido.
 - **Prueba a escala**: el split en 50.000 URLs / 50MB esta cubierto por
   tests unitarios de `splitEntries`, pero no se probo un crawl real que
   genere multiples archivos (requeriria un sitio de decenas de miles de
@@ -141,7 +181,48 @@ esta cerrado.
   funcionar, con warning explicito en el log.
 - **`repos/` se mantiene como material de solo lectura**, no como parte del
   proyecto ni del build. Sirvio para decidir que tomar de cada uno (ver
-  tabla en el README, seccion "Repos de referencia").
+  tabla en el README, seccion "Repos de referencia"). Excepcion puntual:
+  el usuario pidio explicitamente actualizar
+  `repos/repos-SEO/Laravel-YoastSeo-master` (ver mas abajo) — la regla
+  general sigue siendo no tocar `repos/` salvo pedido explicito.
+- **Analisis SEO nativo, sin depender de `yoastseo`.** Se le pregunto
+  explicitamente al usuario (via AskUserQuestion) entre tres opciones:
+  nativo sin dependencias, integrar `yoastseo` real, o ambos. Eligio
+  "nativo". Motivo adicional (no solo la eleccion del usuario): `yoastseo`
+  es GPL-3.0, pesada, orientada a WordPress, y requiere una clase
+  `Researcher` distinta por idioma — integrarla rompe la politica de cero
+  dependencias documentada en CLAUDE.md sin necesidad, cuando los checks
+  mas utiles (longitud de title/description, un solo H1, alt text,
+  legibilidad basica, densidad de keyword) son reproducibles con JS plano.
+  Como aplicar: si en el futuro se pide analisis mas fino (voz pasiva,
+  palabras de transicion, reglas linguisticas por idioma), evaluar
+  entonces si vale la pena reabrir la discusion de agregar `yoastseo` como
+  dependencia opcional — no asumir que "nativo" sigue siendo suficiente
+  sin volver a preguntar si el pedido es sustancialmente mas complejo.
+- **`yoastseo` en `Laravel-YoastSeo-master` actualizado de `1.57.0` a
+  `3.6.0`.** Se instalo el paquete real en un directorio scratch para
+  verificar la API actual antes de escribir codigo (no se confio en
+  resumenes de busqueda web). Cambios de API entre esas versiones,
+  documentados tambien en el README de ese proyecto:
+  - `helpers.scoreToRating` -> `interpreters.scoreToRating`.
+  - `r.score` (propiedad) -> `r.getScore()` (metodo).
+  - `SEOAssessor` (deep import `yoastseo/src/seoAssessor`) ->
+    `SeoAssessor` (export directo del paquete, ya no hace falta deep
+    import).
+  - Ya no se necesita un objeto `Jed` de i18n en el constructor de los
+    assessors.
+  - Ya no existe una clase `Researcher` generica: hay una por idioma en
+    `yoastseo/build/languageProcessing/languages/<lang>/Researcher`
+    (ej. `en`, `es`, `fr`, ... 22 idiomas + `_default` de fallback).
+    `VueYoastComponent.vue` ahora mapea el locale elegido en el formulario
+    a la clase correcta — el codigo original con `1.57.0` siempre corria
+    en modo generico sin importar el locale, lo cual era en si mismo un
+    bug/limitacion que quedo corregido de paso.
+  - `url` en las opciones de `Paper` esta deprecado a favor de `slug`.
+  - Se removieron `babel-polyfill`/`babel-plugin-transform-regenerator`
+    de `package.json` (no usados por nada mas en el proyecto tras quitar
+    el import de `babel-polyfill`, y npm ya marca `babel-polyfill` como
+    deprecado).
 
 ## Problemas conocidos
 
@@ -174,11 +255,16 @@ node bin/sitemap-generator.js --site https://example.com \
    dominios/subdominios), validar el split de sitemaps y considerar
    soporte multi-sitio en un solo config (array de "sites", como hacia el
    CLI de `Sitemap-Generator-Crawler-master` para hosting compartido).
-3. Si se pide indexacion de imagenes reales del sitio (no solo manual),
-   extender `htmlParser.js` para extraer `<img>` y poblar `entry.images`
-   automaticamente durante el crawl.
+3. Si se pide indexacion de imagenes reales del sitio (no solo manual) en el
+   sitemap (no en el analisis SEO, que ya extrae `<img>`), conectar
+   `parsedHtml.images` a las entries del sitemap en `crawler.js`.
 4. Antes de cualquier cambio de arquitectura (scheduler interno, agregar
    una dependencia, cambiar el formato de salida por defecto), releer la
    seccion "Decisiones tecnicas tomadas" de este archivo — varias de esas
    decisiones fueron pedidos explicitos del usuario, no defaults
    arbitrarios.
+5. Si se pide profundizar el analisis SEO (mas idiomas, voz pasiva,
+   inclusive language, etc.), releer la decision "Analisis SEO nativo, sin
+   depender de `yoastseo`" antes de elegir entre extender `seoAnalysis.js`
+   a mano o reabrir la conversacion sobre integrar `yoastseo` como
+   dependencia opcional.

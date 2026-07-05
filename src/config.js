@@ -50,6 +50,14 @@ const DEFAULT_CONFIG = {
   ping: { enabled: false, engines: ['bing'] },
   indexNow: { enabled: false, key: null, keyLocation: null, host: null },
 
+  seo: {
+    enabled: false,
+    focusKeyword: null,
+    titleLength: { min: 40, max: 60 },
+    descriptionLength: { min: 120, max: 156 },
+    minWordCount: 300,
+  },
+
   verbose: false,
   dryRun: false,
 };

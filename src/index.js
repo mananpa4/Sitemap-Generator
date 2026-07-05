@@ -9,6 +9,7 @@ const { fromStaticDir, fromUrlsFile } = require('./sources');
 const { buildUrlsetXml, buildSitemapIndexXml, buildTxtSitemap, splitEntries, gzip } = require('./sitemapBuilder');
 const { ensureSitemapReference } = require('./robotsTxtWriter');
 const { pingSearchEngines, submitIndexNow } = require('./ping');
+const { analyzeSite } = require('./seoAnalysis');
 const { Logger } = require('./logger');
 
 function applyRulesAndDefaults(entries, config) {
@@ -82,6 +83,7 @@ async function generateSitemap(configPath, cliOverrides = {}) {
 
   const entryLists = [];
   let crawlStats = null;
+  let seoPages = [];
 
   if (config.crawl.enabled) {
     if (!config.crawl.startUrls || config.crawl.startUrls.length === 0) {
@@ -91,10 +93,11 @@ async function generateSitemap(configPath, cliOverrides = {}) {
     }
     if (config.crawl.startUrls && config.crawl.startUrls.length > 0) {
       logger.info(`Crawling from: ${config.crawl.startUrls.join(', ')}`);
-      const crawled = await crawlSite({ ...config.crawl, logger });
+      const crawled = await crawlSite({ ...config.crawl, collectSeoData: config.seo.enabled, logger });
       crawlStats = crawled.stats;
       logger.info(`Crawl found ${crawled.entries.length} URL(s). Visited: ${crawlStats.visited}, broken links: ${crawlStats.brokenLinks.length}.`);
       entryLists.push(crawled.entries);
+      seoPages = crawled.seoPages || [];
     }
   }
 
@@ -206,6 +209,21 @@ async function generateSitemap(configPath, cliOverrides = {}) {
     }
   }
 
+  let seoReport = null;
+  if (config.seo.enabled) {
+    seoReport = analyzeSite(seoPages, config.seo);
+    logger.info(`SEO analysis: ${seoPages.length} page(s) analyzed, average score ${seoReport.averageScore ?? 'n/a'}.`);
+    if (seoReport.duplicateTitles.length || seoReport.duplicateDescriptions.length) {
+      logger.warn(`${seoReport.duplicateTitles.length} duplicate title group(s), ${seoReport.duplicateDescriptions.length} duplicate description group(s) — see the SEO report.`);
+    }
+    if (!config.dryRun) {
+      const seoReportPath = path.join(outDir, `${base}-seo-report.json`);
+      fs.writeFileSync(seoReportPath, JSON.stringify(seoReport, null, 2), 'utf8');
+      writtenFiles.push(seoReportPath);
+      logger.info(`Wrote ${path.basename(seoReportPath)} with on-page SEO diagnostics.`);
+    }
+  }
+
   if (config.updateRobotsTxt && !config.dryRun) {
     const robotsPath = config.robotsTxtFile || path.join(outDir, 'robots.txt');
     if (!sitemapUrlForRobots || !/^https?:/i.test(sitemapUrlForRobots)) {
@@ -236,6 +254,7 @@ async function generateSitemap(configPath, cliOverrides = {}) {
     files: writtenFiles,
     sitemapUrl: sitemapUrlForRobots,
     report,
+    seoReport,
     elapsedMs,
   };
 }

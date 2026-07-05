@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseHtml } = require('../src/htmlParser');
+const { parseHtml, stripHtmlToText } = require('../src/htmlParser');
 
 test('extracts links regardless of attribute order', () => {
   const html = `
@@ -34,4 +34,31 @@ test('extracts base href and title', () => {
   const { base, title } = parseHtml(html);
   assert.equal(base, '/sub/');
   assert.equal(title, 'My Page');
+});
+
+test('extracts meta description', () => {
+  const html = '<meta name="description" content="A great page about cats.">';
+  const { metaDescription } = parseHtml(html);
+  assert.equal(metaDescription, 'A great page about cats.');
+});
+
+test('extracts headings by level, ignoring nested markup', () => {
+  const html = '<h1>Main <b>Title</b></h1><h2>Sub one</h2><h2>Sub two</h2>';
+  const { headings } = parseHtml(html);
+  assert.deepEqual(headings.h1, ['Main Title']);
+  assert.deepEqual(headings.h2, ['Sub one', 'Sub two']);
+  assert.deepEqual(headings.h3, []);
+});
+
+test('extracts images with src and alt', () => {
+  const html = '<img src="/a.png" alt="A cat"><img src="/b.png">';
+  const { images } = parseHtml(html);
+  assert.equal(images.length, 2);
+  assert.deepEqual(images[0], { src: '/a.png', alt: 'A cat' });
+  assert.deepEqual(images[1], { src: '/b.png', alt: '' });
+});
+
+test('stripHtmlToText removes scripts/styles/tags and collapses whitespace', () => {
+  const html = '<html><head><style>.a{color:red}</style></head><body><script>evil()</script><p>Hello   <b>world</b>!</p></body></html>';
+  assert.equal(stripHtmlToText(html), 'Hello world !');
 });

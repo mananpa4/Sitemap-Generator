@@ -35,6 +35,15 @@ Task Scheduler, CI).
   Console / su API de indexacion.
 - **Config file + CLI + API programatica**: mismo motor desde `sitemap.config.js`,
   flags de linea de comandos, o `require('./src').generateSitemap(...)`.
+- **Analisis SEO on-page nativo** (`seo.enabled: true` / `--seo`): sobre cada
+  URL crawleada revisa longitud de title/meta description, un solo `<h1>`,
+  cobertura de `alt` en imagenes, conteo de palabras, legibilidad (Flesch
+  reading ease), enlaces internos/externos, y — si defines
+  `focusKeyword`/`--focus-keyword` — presencia y densidad de la palabra clave.
+  Tambien detecta titles/descriptions duplicados entre paginas del sitio.
+  Escribe `*-seo-report.json`. Es una heuristica propia, ligera y sin
+  dependencias (no un port de Yoast SEO ni de ninguna libreria externa — ver
+  la seccion "Analisis SEO" mas abajo).
 
 ## Requisitos
 
@@ -79,7 +88,7 @@ const result = await generateSitemap({
   updateRobotsTxt: true,
 });
 
-console.log(result); // { entryCount, files, sitemapUrl, report, elapsedMs }
+console.log(result); // { entryCount, files, sitemapUrl, report, seoReport, elapsedMs }
 ```
 
 ## Fuentes de URLs, combinadas
@@ -92,6 +101,44 @@ Puedes usar una o varias fuentes a la vez; se fusionan por URL (dedupe):
 | Directorio estatico | `staticDir` | Sitio generado estaticamente (build de un SSG), sin necesidad de HTTP |
 | Lista manual | `urlsFile` | URLs que el crawler no puede descubrir (paginas huerfanas, etc.) |
 | Inline | `additionalUrls` | Un puñado de URLs fijas dentro del propio config |
+
+## Analisis SEO
+
+```bash
+node bin/sitemap-generator.js --site https://example.com --seo --focus-keyword "zapatos para correr"
+```
+
+Por cada URL que el crawler visita y parsea como HTML, se ejecutan estos
+checks (cada uno con rating `good`/`ok`/`bad` y un mensaje):
+
+| Check | Que mide | Default |
+|---|---|---|
+| `titleLength` | Longitud del `<title>` | 40-60 caracteres |
+| `descriptionLength` | Longitud del meta description | 120-156 caracteres |
+| `singleH1` | Exactamente un `<h1>` en la pagina | — |
+| `imageAlt` | % de `<img>` con `alt` no vacio | >=90% good, >=50% ok |
+| `wordCount` | Cantidad de palabras del texto visible | 300+ |
+| `readability` | Flesch reading ease sobre el texto visible | >=60 good, >=30 ok |
+| `internalLinks` / `externalLinks` | Al menos un enlace interno/externo | — |
+| `keywordInTitle` / `keywordInDescription` / `keywordDensity` | Solo si defines `focusKeyword` | densidad 0.5%-2.5% |
+
+Ademas, a nivel de sitio completo se detectan **titles y meta descriptions
+duplicados** entre distintas paginas (`duplicateTitles`/`duplicateDescriptions`
+en el reporte).
+
+Todo esto se implemento **desde cero, en JS plano** (`src/seoAnalysis.js` +
+las extensiones de `src/htmlParser.js`), sin agregar ninguna dependencia de
+produccion — es un heuristico propio de esta herramienta, inspirado en el
+tipo de checks que hace Yoast SEO, pero no un port de su algoritmo ni de su
+escala de puntaje. Si tu proyecto necesita un analisis de contenido mas
+fino (idiomas con reglas linguisticas propias, voz pasiva, palabras de
+transicion, etc.), considera usar la libreria `yoastseo` directamente en tu
+capa de edicion de contenido (ver `repos/repos-SEO/Laravel-YoastSeo-master`
+para un ejemplo de integracion en Vue/Laravel) en vez de aqui, para mantener
+este generador de sitemaps sin dependencias.
+
+Deshabilitado por defecto (`seo.enabled: false`); actívalo con `--seo` o
+`seo: { enabled: true }` en el config file.
 
 ## Ejecucion periodica: cron o manual
 
@@ -121,11 +168,12 @@ src/
   crawler.js                Crawler BFS con pool de concurrencia
   http.js                   Wrapper de fetch con timeout/retries
   robots.js                 Parser/evaluador de robots.txt
-  htmlParser.js              Extraccion de enlaces/meta/canonical sin dependencias
+  htmlParser.js              Extraccion de enlaces/meta/headings/imagenes sin dependencias
   sources.js                Fuentes alternativas: staticDir, urlsFile
   sitemapBuilder.js          Construccion de XML/TXT, split, sitemap index, gzip
   robotsTxtWriter.js         Actualiza robots.txt de forma no destructiva
   ping.js                    Ping a buscadores + IndexNow
+  seoAnalysis.js             Checks SEO on-page nativos (title/description/H1/alt/legibilidad/keyword/duplicados)
   logger.js                  Logger simple por niveles
 examples/                  Config de ejemplo, lista de URLs, ejemplos de cron/CI
 test/                       Tests con node:test (sin dependencias)
@@ -139,9 +187,10 @@ npm test
 # equivalente a: node --test test/*.test.js
 ```
 
-Incluye tests unitarios (robots.txt, HTML parsing, sitemap builder, helpers
-del crawler) y un test de integracion que levanta un servidor HTTP local real
-y valida el flujo completo de crawl -> sitemap.xml -> reporte.
+Incluye tests unitarios (robots.txt, HTML parsing, sitemap builder, checks
+SEO, helpers del crawler) y tests de integracion que levantan un servidor
+HTTP local real y validan el flujo completo de crawl -> sitemap.xml ->
+reporte (y crawl -> reporte SEO).
 
 ## Repos de referencia (`repos/`)
 
@@ -150,9 +199,15 @@ Carpeta con las herramientas que se revisaron para diseñar este proyecto
 (`Sitemap-Generator-Crawler-master`, `sitemap-generator-master`,
 `go-sitemap-generator-master`), generadores orientados a framework
 (`next-sitemap-master`, `super-sitemap-main`, `php-sitemap-master`,
-`sitemap_generator-master` para Ruby/Rails, `sitemap.js-master`), y una GUI
+`sitemap_generator-master` para Ruby/Rails, `sitemap.js-master`), una GUI
 de escritorio (`siteone-crawler-gui-master`) cuyo aporte conceptual (reporte
-de resultados del crawl, sitemap en TXT) se incorporo a esta herramienta.
+de resultados del crawl, sitemap en TXT) se incorporo a esta herramienta, y
+en `repos/repos-SEO/` dos proyectos de analisis de contenido SEO
+(`Laravel-YoastSeo-master`, una demo Vue/Laravel que consume la libreria
+`yoastseo`, actualizada aqui de la version `1.57.0` a `3.6.0`; y
+`yoastseo-279`, el dump completo del plugin WordPress SEO de Yoast v27.9,
+usado como referencia de que checks existen en la version actual de Yoast al
+diseñar `src/seoAnalysis.js`).
 
 ## Notas y limitaciones conocidas
 

@@ -2,7 +2,7 @@
 
 const { fetchUrl } = require('./http');
 const { fetchRobotsTxt } = require('./robots');
-const { parseHtml } = require('./htmlParser');
+const { parseHtml, stripHtmlToText } = require('./htmlParser');
 
 const DEFAULT_EXCLUDED_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico', '.bmp',
@@ -120,6 +120,7 @@ async function crawlSite(opts) {
     ignoreAMP = true,
     excludeExtensions = DEFAULT_EXCLUDED_EXTENSIONS,
     excludePatterns = [],
+    collectSeoData = false,
     logger = console,
   } = opts;
 
@@ -128,6 +129,7 @@ async function crawlSite(opts) {
 
   const visited = new Set();
   const results = new Map(); // loc -> entry
+  const seoPages = [];
   const queue = [];
 
   const stats = {
@@ -203,23 +205,42 @@ async function crawlSite(opts) {
 
       links = parsedHtml.links;
 
-      if (followLinks) {
-        const baseForLinks = parsedHtml.base ? new URL(parsedHtml.base, finalUrl).toString() : finalUrl;
-        for (const link of links) {
-          if (link.rel.includes('nofollow')) continue;
-          let abs;
-          try {
-            abs = new URL(link.href, baseForLinks).toString();
-          } catch {
-            continue;
-          }
-          if (!/^https?:/i.test(abs)) continue; // skip mailto:, tel:, javascript:, etc.
-          const normAbs = normalizeUrl(abs, { stripQuerystring });
-          if (sameOriginOnly && new URL(normAbs).origin !== origin) continue;
-          if (visited.has(normAbs)) continue;
-          visited.add(normAbs);
-          queue.push({ url: normAbs, depth: depth + 1 });
+      let internalLinksCount = 0;
+      let externalLinksCount = 0;
+      const baseForLinks = parsedHtml.base ? new URL(parsedHtml.base, finalUrl).toString() : finalUrl;
+
+      for (const link of links) {
+        let abs;
+        try {
+          abs = new URL(link.href, baseForLinks).toString();
+        } catch {
+          continue;
         }
+        if (!/^https?:/i.test(abs)) continue; // skip mailto:, tel:, javascript:, etc.
+
+        const isInternal = new URL(abs).origin === origin;
+        if (isInternal) internalLinksCount++;
+        else externalLinksCount++;
+
+        if (!followLinks || link.rel.includes('nofollow')) continue;
+        if (sameOriginOnly && !isInternal) continue;
+        const normAbs = normalizeUrl(abs, { stripQuerystring });
+        if (visited.has(normAbs)) continue;
+        visited.add(normAbs);
+        queue.push({ url: normAbs, depth: depth + 1 });
+      }
+
+      if (collectSeoData) {
+        seoPages.push({
+          url: loc,
+          title: parsedHtml.title,
+          metaDescription: parsedHtml.metaDescription,
+          headings: parsedHtml.headings,
+          images: parsedHtml.images,
+          text: stripHtmlToText(res.body),
+          internalLinksCount,
+          externalLinksCount,
+        });
       }
     }
 
@@ -232,7 +253,7 @@ async function crawlSite(opts) {
     }
   });
 
-  return { entries: Array.from(results.values()), stats };
+  return { entries: Array.from(results.values()), stats, seoPages };
 }
 
 module.exports = {
