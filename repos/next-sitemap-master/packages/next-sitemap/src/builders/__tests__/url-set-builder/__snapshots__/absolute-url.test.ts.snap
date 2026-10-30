@@ -1,3 +1,0 @@
-// Bun Snapshot v1, https://goo.gl/fbAQLP
-
-exports[`UrlSetBuilder absoluteUrl: With uri encoding 1`] = `"https://example.com/&amp;/&apos;/&quot;/&gt;/&lt;/"`;

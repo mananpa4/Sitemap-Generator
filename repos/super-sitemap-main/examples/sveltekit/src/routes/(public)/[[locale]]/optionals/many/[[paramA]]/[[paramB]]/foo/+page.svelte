@@ -1,8 +1,0 @@
-<script lang="ts">
-  import { page } from '$app/stores';
-  const { params } = $page;
-</script>
-
-<h1>Example optional params before a static path</h1>
-
-<p>Optional values: {params.paramA} / {params.paramB}</p>

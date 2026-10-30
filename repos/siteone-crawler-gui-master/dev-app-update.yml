@@ -1,3 +1,0 @@
-provider: generic
-url: https://crawler.siteone.io/auto-updates
-updaterCacheDirName: siteone-crawler-updater
